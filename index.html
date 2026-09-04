@@ -545,11 +545,29 @@
     .club-banner{
       height:auto !important; aspect-ratio:1/1; width:min(86vw, 340px);
       margin:20px auto 6px; border-radius:0; overflow:visible; flex-shrink:0;
-      background: var(--logo) center/contain no-repeat,
-                  radial-gradient(circle at 50% 55%, rgba(228,87,46,0.30), transparent 68%) !important;
+      background: #0a0704 var(--logo) center/contain no-repeat !important;
     }
     .club-banner-img, .club-banner-overlay, .club-banner-text{ display:none !important; }
+    .club-banner::after, .club-banner::before{ display:none !important; }
   }
+  /* ---------- PLANNING ---------- */
+  .voorstel-card{ margin-bottom:16px; }
+  .voorstel-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .voorstel-meta{ color:var(--smoke); font-size:0.8rem; margin-top:4px; }
+  .voorstel-oms{ color:var(--text-dim); font-size:0.88rem; line-height:1.5; margin:10px 0 2px; }
+  .voorstel-del{ background:rgba(243,237,226,0.06); color:var(--smoke); width:30px; height:30px; border-radius:50%; flex-shrink:0; font-size:0.85rem; }
+  .datumopties{ display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+  .datumoptie{ display:flex; align-items:center; gap:12px; padding:10px 12px; background:var(--bg-elevated-2); border:1px solid var(--border); border-radius:14px; }
+  .datumoptie.gekozen{ border-color:rgba(228,87,46,0.4); }
+  .stem-btn{ flex-shrink:0; padding:8px 14px; border-radius:999px; font-size:0.78rem; font-weight:600; background:var(--bg-elevated); color:var(--text-dim); border:1px solid var(--border); }
+  .stem-btn.actief{ background:var(--ember); color:#1a0d05; border-color:var(--ember); }
+  .datumoptie-info{ min-width:0; }
+  .datumoptie-datum{ font-size:0.86rem; font-weight:600; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .datumoptie-namen{ color:var(--smoke); font-size:0.74rem; margin-top:2px; }
+  .top-badge{ font-size:0.6rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--ember-glow); background:rgba(228,87,46,0.14); padding:2px 7px; border-radius:20px; }
+  .plan-opties{ display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
+  .plan-optie{ display:flex; align-items:center; gap:10px; padding:10px 12px; background:var(--bg-elevated-2); border:1px solid var(--border); border-radius:12px; cursor:pointer; font-size:0.88rem; }
+  @media (max-width:980px){ .bottom-nav .nav-item{ padding:6px 3px; font-size:0.56rem; } .bottom-nav .ico{ font-size:1.05rem; } }
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
@@ -606,6 +624,7 @@
       <nav class="primary">
         <button class="nav-item active" data-view="dashboard"><span class="ico">◆</span> Dashboard</button>
         <button class="nav-item" data-view="overzicht"><span class="ico">📅</span> BBQ's</button>
+        <button class="nav-item" data-view="planning"><span class="ico">📋</span> Planning</button>
         <button class="nav-item" data-view="statistieken"><span class="ico">📊</span> Statistieken</button>
         <button class="nav-item admin-only" data-view="leden"><span class="ico">👥</span> Leden</button>
         <button class="nav-item admin-only" data-view="instellingen"><span class="ico">⚙️</span> Instellingen</button>
@@ -651,6 +670,15 @@
           <div class="filter-tab" data-filter="Afgerond" onclick="setOverzichtFilter('Afgerond')">Afgerond</div>
         </div>
         <div class="bbq-grid" id="bbqGrid"></div>
+      </section>
+
+      <!-- ============ PLANNING ============ -->
+      <section class="view" id="planning">
+        <div class="page-head">
+          <div><span class="eyebrow">Samen plannen</span><h1>Planning</h1></div>
+          <button class="btn-primary" onclick="openNieuwVoorstelModal()">+ Nieuw voorstel</button>
+        </div>
+        <div id="planningRoot"></div>
       </section>
 
       <!-- ============ BBQ DETAIL ============ -->
@@ -719,6 +747,7 @@
   <nav class="bottom-nav">
     <button class="nav-item active" data-view="dashboard"><span class="ico">◆</span>Home</button>
     <button class="nav-item" data-view="overzicht"><span class="ico">📅</span>BBQ's</button>
+    <button class="nav-item" data-view="planning"><span class="ico">📋</span>Plan</button>
     <button class="nav-item" data-view="statistieken"><span class="ico">📊</span>Stats</button>
     <button class="nav-item admin-only" data-view="leden"><span class="ico">👥</span>Leden</button>
     <button class="nav-item admin-only" data-view="instellingen"><span class="ico">⚙️</span>Instel.</button>
@@ -764,6 +793,7 @@ function renderBranding(){
 renderBranding();
 
 let bbqs = [];
+let voorstellen = [];
 
 
 /* ============================================================
@@ -804,6 +834,7 @@ function showView(id, viaBack){
 
   if(id === 'dashboard') renderDashboard();
   if(id === 'overzicht') renderOverzicht();
+  if(id === 'planning') renderPlanning();
   if(id === 'statistieken') renderStatistieken();
   if(id === 'leden') renderLeden();
   if(id === 'instellingen'){
@@ -1453,7 +1484,7 @@ const firebaseConfig = {
 };
 let fdb = null, online = false, _remoteApplying = false;
 let _remoteFotos = [];
-const _last = { meta:null, leden:{}, bbqs:{}, fotos:{} };
+const _last = { meta:null, leden:{}, bbqs:{}, fotos:{}, voorstellen:{} };
 
 function verwijderBbq(id){
   if(!confirm('Deze BBQ definitief verwijderen voor de hele club?')) return;
@@ -1476,6 +1507,7 @@ function _markeerSchoon(){
   _last.leden = {}; leden.forEach(l => { _last.leden[String(l.id)] = JSON.stringify(l); });
   _last.bbqs = {}; bbqs.forEach(b => { const { fotos, ...rest } = b; _last.bbqs[String(b.id)] = JSON.stringify(rest); });
   _last.fotos = {}; _alleFotos().forEach(f => { _last.fotos[String(f.id)] = JSON.stringify(f); });
+  _last.voorstellen = {}; voorstellen.forEach(v => { _last.voorstellen[String(v.id)] = JSON.stringify(v); });
 }
 
 function hertekenHuidigeScherm(){
@@ -1487,6 +1519,7 @@ function hertekenHuidigeScherm(){
     else if(id === 'overzicht') renderOverzicht();
     else if(id === 'statistieken') renderStatistieken();
     else if(id === 'leden') renderLeden();
+    else if(id === 'planning') renderPlanning();
     else if(id === 'detail'){ if(huidigeBbq()) renderDetail(); else showView('overzicht'); }
     else if(id === 'instellingen'){
       const cn = document.getElementById('setClubnaam'); if(cn) cn.value = clubInstellingen.naam;
@@ -1534,6 +1567,11 @@ function abonneer(){
     _remoteFotos = snap.docs.map(x => JSON.parse(JSON.stringify(x.data())));
     _remoteApplying = true; _naRemote(); _remoteApplying = false;
   }, e => console.error('fotos snapshot', e));
+
+  fdb.collection('voorstellen').onSnapshot(snap => {
+    voorstellen = snap.docs.map(x => JSON.parse(JSON.stringify(x.data())));
+    _remoteApplying = true; _naRemote(); _remoteApplying = false;
+  }, e => console.error('voorstellen snapshot', e));
 }
 
 function _syncCollectie(naam, nu, laatst){
@@ -1557,7 +1595,129 @@ function pushState(){
     _syncCollectie('bbqs', bbqsNu, _last.bbqs);
     const fotosNu = {}; _alleFotos().forEach(f => { fotosNu[String(f.id)] = f; });
     _syncCollectie('fotos', fotosNu, _last.fotos);
+    const voorstellenNu = {}; voorstellen.forEach(v => { voorstellenNu[String(v.id)] = v; });
+    _syncCollectie('voorstellen', voorstellenNu, _last.voorstellen);
   }catch(e){ console.error('pushState', e); }
+}
+
+/* ============================================================
+   PLANNING — voorstellen met datumopties, stemmen, doorzetten
+   ============================================================ */
+function magVoorstelBeheren(v){ return currentUser.role === 'admin' || v.indienerId === currentUser.id; }
+
+function renderPlanning(){
+  const root = document.getElementById('planningRoot');
+  if(!root) return;
+  const open = voorstellen.filter(v => v.status !== 'ingepland').sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+  if(!open.length){
+    root.innerHTML = '<p class="empty-note">Nog geen voorstellen. Dien het eerste voorstel in voor een nieuwe BBQ!</p>';
+    return;
+  }
+  root.innerHTML = open.map(v => {
+    const indiener = vindLid(v.indienerId);
+    const opties = (v.datumopties||[]).slice().sort((a,b)=> new Date(a.datum)-new Date(b.datum));
+    const maxStemmen = Math.max(1, ...opties.map(o => (o.stemmen||[]).length));
+    const optiesHtml = opties.map(o => {
+      const stemmen = o.stemmen || [];
+      const ikStem = stemmen.includes(currentUser.id);
+      const namen = stemmen.map(id => vindLid(id).naam.split(' ')[0]).join(', ');
+      const top = stemmen.length === maxStemmen && stemmen.length > 0;
+      return `<div class="datumoptie ${ikStem?'gekozen':''}">
+        <button class="stem-btn ${ikStem?'actief':''}" onclick="stemOpDatum(${v.id}, ${o.id})">${ikStem?'✓ Ik kan':'Ik kan'}</button>
+        <div class="datumoptie-info">
+          <div class="datumoptie-datum">${formatDatum(o.datum)} ${top?'<span class="top-badge">meeste stemmen</span>':''}</div>
+          <div class="datumoptie-namen">${stemmen.length} stem${stemmen.length===1?'':'men'}${namen?' · '+namen:''}</div>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="card panel voorstel-card">
+      <div class="voorstel-head">
+        <div><h3 style="margin:0;">${v.titel}</h3>
+          <div class="voorstel-meta">📍 ${v.locatie||'nog te bepalen'} · voorgesteld door ${indiener.naam.split(' ')[0]}</div></div>
+        ${magVoorstelBeheren(v) ? `<button class="voorstel-del" title="Verwijderen" onclick="verwijderVoorstel(${v.id})">✕</button>` : ''}
+      </div>
+      ${v.beschrijving ? `<p class="voorstel-oms">${v.beschrijving}</p>` : ''}
+      <div class="datumopties">${optiesHtml}</div>
+      ${magVoorstelBeheren(v) ? `<button class="btn-primary btn-block" style="margin-top:14px;" onclick="openPlanInModal(${v.id})">Definitief inplannen →</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function openNieuwVoorstelModal(){
+  openModal('Nieuw BBQ-voorstel', `
+    <div class="field"><label>Titel</label><input type="text" id="vnTitel" placeholder="Bijv. Zomer-BBQ"></div>
+    <div class="field"><label>Locatie</label><input type="text" id="vnLocatie" placeholder="Adres of plek (mag later)"></div>
+    <div class="field"><label>Beschrijving</label><textarea id="vnBeschrijving" style="height:60px;" placeholder="Waar gaat het om?"></textarea></div>
+    <div class="field"><label>Datumopties — leden stemmen wanneer ze kunnen</label>
+      <input type="datetime-local" id="vnDatum0" style="margin-bottom:8px;">
+      <input type="datetime-local" id="vnDatum1" style="margin-bottom:8px;">
+      <input type="datetime-local" id="vnDatum2" style="margin-bottom:8px;">
+    </div>
+    <button class="btn-primary btn-block" onclick="submitNieuwVoorstel()">Voorstel plaatsen</button>
+  `);
+}
+function submitNieuwVoorstel(){
+  const titel = (document.getElementById('vnTitel').value||'').trim();
+  if(!titel){ document.getElementById('vnTitel').focus(); return; }
+  const opties = [];
+  [0,1,2].forEach(i => { const val = document.getElementById('vnDatum'+i).value; if(val) opties.push({ id: nextId(), datum: val, stemmen: [] }); });
+  if(!opties.length){ alert('Vul minstens één datumoptie in.'); return; }
+  voorstellen.push({
+    id: nextId(), titel,
+    locatie: (document.getElementById('vnLocatie').value||'').trim(),
+    beschrijving: (document.getElementById('vnBeschrijving').value||'').trim(),
+    indienerId: currentUser.id, status:'open', datumopties: opties, createdAt: Date.now()
+  });
+  if(online) pushState();
+  closeModal();
+  showView('planning'); renderPlanning();
+}
+function stemOpDatum(voorstelId, optieId){
+  const v = voorstellen.find(x => x.id === voorstelId); if(!v) return;
+  const o = (v.datumopties||[]).find(x => x.id === optieId); if(!o) return;
+  o.stemmen = o.stemmen || [];
+  const i = o.stemmen.indexOf(currentUser.id);
+  if(i >= 0) o.stemmen.splice(i,1); else o.stemmen.push(currentUser.id);
+  if(online) pushState();
+  renderPlanning();
+}
+function openPlanInModal(voorstelId){
+  const v = voorstellen.find(x => x.id === voorstelId); if(!v) return;
+  const opties = (v.datumopties||[]).slice().sort((a,b)=> (b.stemmen||[]).length - (a.stemmen||[]).length || new Date(a.datum)-new Date(b.datum));
+  const radios = opties.map((o,idx) => `<label class="plan-optie">
+    <input type="radio" name="planDatum" value="${o.id}" ${idx===0?'checked':''}>
+    <span>${formatDatum(o.datum)} — ${(o.stemmen||[]).length} stem${(o.stemmen||[]).length===1?'':'men'}</span>
+  </label>`).join('');
+  openModal('Definitief inplannen', `
+    <p style="color:var(--text-dim); font-size:0.88rem; margin-bottom:12px;">Kies de datum. Hiervan wordt de volgende BBQ gemaakt; iedereen die op die datum kon staat meteen aangemeld.</p>
+    <div class="plan-opties">${radios}</div>
+    <button class="btn-primary btn-block" style="margin-top:8px;" onclick="bevestigPlanIn(${v.id})">BBQ aanmaken</button>
+  `);
+}
+function bevestigPlanIn(voorstelId){
+  const v = voorstellen.find(x => x.id === voorstelId); if(!v) return;
+  const sel = document.querySelector('input[name="planDatum"]:checked'); if(!sel) return;
+  const optie = (v.datumopties||[]).find(o => String(o.id) === sel.value); if(!optie) return;
+  const gestemd = optie.stemmen || [];
+  const ids = gestemd.includes(v.indienerId) ? gestemd.slice() : [v.indienerId, ...gestemd];
+  const deelnemers = ids.map(lidId => ({ lidId, status:'Aangemeld' }));
+  const nieuweBbq = {
+    id: nextId(), titel: v.titel, datum: optie.datum,
+    locatie: v.locatie || 'Nog te bepalen', beschrijving: v.beschrijving || '',
+    organisatorId: v.indienerId, status:'Gepland', deelnemers, gangen:[], fotos:[]
+  };
+  bbqs.push(nieuweBbq);
+  voorstellen = voorstellen.filter(x => x.id !== voorstelId);
+  if(online) pushState();
+  closeModal();
+  currentBbqId = nieuweBbq.id;
+  showView('detail'); renderDetail();
+}
+function verwijderVoorstel(voorstelId){
+  if(!confirm('Dit voorstel verwijderen?')) return;
+  voorstellen = voorstellen.filter(x => x.id !== voorstelId);
+  if(online) pushState();
+  renderPlanning();
 }
 
 function initFirebase(){
