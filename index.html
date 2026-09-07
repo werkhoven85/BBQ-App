@@ -576,6 +576,12 @@
   .card, .panel, .voorstel-oms, .datumoptie-namen, .lid-card .email, .deelnemer, .hero-meta, .detail-meta{ overflow-wrap:anywhere; word-break:break-word; }
   /* iOS/Safari zoomt in bij invoervelden < 16px — daarom op mobiel min. 16px (geen ongewenste inzoom) */
   @media (max-width: 980px){ input, textarea, select{ font-size:16px !important; } }
+  /* meerdere review-onderdelen */
+  .review-criteria{ display:flex; flex-direction:column; gap:10px; margin-bottom:12px; }
+  .review-criterion{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .rc-label{ font-size:0.86rem; color:var(--text-dim); font-weight:600; }
+  .review-criterion .star-picker{ margin-bottom:0; font-size:1.15rem; }
+  .review-breakdown{ font-size:0.72rem; color:var(--smoke); margin:1px 0 4px; }
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
@@ -787,7 +793,7 @@ let leden = [];
 let currentUser = null;
 function vindLid(id){ return leden.find(l => l.id === id) || { id, naam:'Onbekend lid', email:'', drank:null }; }
 
-let clubInstellingen = { naam:'De Vuurplaats', tagline:'BBQ Club' };
+let clubInstellingen = { naam:'', tagline:'' };
 
 function renderBranding(){
   document.querySelectorAll('.club-banner-text h1').forEach(el => el.textContent = clubInstellingen.naam);
@@ -796,7 +802,7 @@ function renderBranding(){
   document.querySelectorAll('.sidebar .brand-sub').forEach(el => el.textContent = clubInstellingen.tagline);
   document.querySelectorAll('.login-card .brand-name').forEach(el => el.textContent = clubInstellingen.naam);
   document.querySelectorAll('.login-card .brand-sub').forEach(el => el.textContent = clubInstellingen.tagline);
-  document.title = `${clubInstellingen.naam} — ${clubInstellingen.tagline}`;
+  if(clubInstellingen.naam) document.title = `${clubInstellingen.naam} — ${clubInstellingen.tagline}`;
 }
 renderBranding();
 
@@ -809,7 +815,32 @@ let voorstellen = [];
    ============================================================ */
 function initials(naam){ return naam.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase(); }
 function alleGerechten(bbq){ return bbq.gangen.flatMap(g => g.gerechten); }
-function gemiddelde(reviews){ return reviews.length ? reviews.reduce((s,r)=>s+r.sterren,0)/reviews.length : null; }
+const REVIEW_CRITERIA = [
+  { key:'smaak', label:'Smaak' },
+  { key:'malsheid', label:'Malsheid / gaarheid' },
+  { key:'kruiding', label:'Kruiding' }
+];
+function reviewScore(r){
+  if(r && r.scores){
+    const vals = REVIEW_CRITERIA.map(c => r.scores[c.key]).filter(v => typeof v === 'number' && v > 0);
+    return vals.length ? vals.reduce((s,v)=>s+v,0)/vals.length : null;
+  }
+  if(r && typeof r.sterren === 'number') return r.sterren;
+  return null;
+}
+function reviewKopHtml(r){
+  const sc = reviewScore(r);
+  return `<span class="stars">${sc!==null ? sterTekst(Math.round(sc))+' '+sc.toFixed(1) : ''}</span>`;
+}
+function reviewBreakdownHtml(r){
+  if(!r || !r.scores) return '';
+  const parts = REVIEW_CRITERIA.filter(c => r.scores[c.key]).map(c => `${c.label} ${r.scores[c.key]}★`);
+  return parts.length ? `<div class="review-breakdown">${parts.join(' · ')}</div>` : '';
+}
+function gemiddelde(reviews){
+  const vals = (reviews||[]).map(reviewScore).filter(v => v !== null);
+  return vals.length ? vals.reduce((s,v)=>s+v,0)/vals.length : null;
+}
 function sterTekst(n){ return '★'.repeat(n) + '☆'.repeat(5-n); }
 function isOrganisatorOfAdmin(bbq){ return currentUser.role==='admin' || bbq.organisatorId===currentUser.id; }
 
@@ -1019,7 +1050,7 @@ function renderDashboard(){
   const laatsteReviews = alleReviews.slice(-3).reverse();
   document.getElementById('panelReviews').innerHTML = laatsteReviews.length ? laatsteReviews.map(r => `
     <div class="review-row"><div class="txt">
-      <div class="top"><span>${vindLid(r.lidId).naam.split(' ')[0]} over ${r.gerecht}</span><span class="stars">${sterTekst(r.sterren)}</span></div>
+      <div class="top"><span>${vindLid(r.lidId).naam.split(' ')[0]} over ${r.gerecht}</span>${reviewKopHtml(r)}</div>
       <p>"${r.reactie || 'Geen reactie'}"</p>
     </div></div>`).join('') : '<p class="empty-note">Nog geen reviews geplaatst.</p>';
 
@@ -1035,7 +1066,8 @@ function renderDashboard(){
   `).join('') : '<p class="empty-note">Nog geen beoordeelde gerechten.</p>';
 
   const ditJaar = bbqs.filter(b => new Date(b.datum).getFullYear() === new Date().getFullYear()).length;
-  const gemClub = alleReviews.length ? (alleReviews.reduce((s,r)=>s+r.sterren,0)/alleReviews.length).toFixed(1) : '—';
+  const _clubScores = alleReviews.map(reviewScore).filter(v=>v!==null);
+  const gemClub = _clubScores.length ? (_clubScores.reduce((s,v)=>s+v,0)/_clubScores.length).toFixed(1) : '—';
   const orgTellingen = {};
   bbqs.forEach(b => { orgTellingen[b.organisatorId] = (orgTellingen[b.organisatorId]||0)+1; });
   const topOrgEntry = Object.entries(orgTellingen).sort((a,b)=>b[1]-a[1])[0];
@@ -1334,7 +1366,7 @@ function verwijderFoto(bbqId, fotoId){
 }
 
 /* ---- Reviews tab ---- */
-let gekozenSterrenPerGerecht = {};
+let gekozenScores = {};
 function renderReviewsTab(bbq){
   const gerechten = alleGerechten(bbq);
   if(!gerechten.length) return '<p class="empty-note">Er is nog geen menu om te beoordelen.</p>';
@@ -1357,7 +1389,8 @@ function renderReviewsTab(bbq){
       <h3><span>${g.naam}</span><span style="font-family:var(--font-mono); color:var(--brass); font-size:0.82rem; font-weight:700;">${avg !== null ? '★ '+avg.toFixed(1)+' · '+g.reviews.length+' stemmen' : 'Nog geen stemmen'}</span></h3>
       ${g.reviews.map(r => `<div class="review-item">
           <div class="avatar" style="width:30px;height:30px;font-size:0.68rem;">${initials(vindLid(r.lidId).naam)}</div>
-          <div class="body"><div class="head"><span class="name">${vindLid(r.lidId).naam}</span><span class="stars">${sterTekst(r.sterren)}</span></div>
+          <div class="body"><div class="head"><span class="name">${vindLid(r.lidId).naam}</span>${reviewKopHtml(r)}</div>
+          ${reviewBreakdownHtml(r)}
           <p>${r.reactie || '(geen reactie)'}</p></div>
         </div>`).join('') || '<p class="empty-note">Nog geen reviews.</p>'}
       ${magDitGerechtReviewen ? reviewFormHtml(bbq.id, g.id) : ''}
@@ -1366,32 +1399,42 @@ function renderReviewsTab(bbq){
   return html;
 }
 function reviewFormHtml(bbqId, gerechtId){
+  const rijen = REVIEW_CRITERIA.map(cr => `
+      <div class="review-criterion">
+        <span class="rc-label">${cr.label}</span>
+        <div class="star-picker" id="sp-${gerechtId}-${cr.key}">
+          ${[1,2,3,4,5].map(n => `<span onclick="kiesScore(${gerechtId}, '${cr.key}', ${n})" data-n="${n}">☆</span>`).join('')}
+        </div>
+      </div>`).join('');
   return `<div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
-    <div class="star-picker" id="starPicker-${gerechtId}">
-      ${[1,2,3,4,5].map(n => `<span onclick="kiesSterren(${gerechtId}, ${n})" data-n="${n}">☆</span>`).join('')}
-    </div>
-    <textarea id="reactieInput-${gerechtId}" placeholder="Wat vond je ervan?"></textarea>
+    <div class="review-criteria">${rijen}</div>
+    <textarea id="reactieInput-${gerechtId}" placeholder="Wat vond je ervan? (optioneel)"></textarea>
     <button class="btn-primary" onclick="plaatsReview(${bbqId}, ${gerechtId})">Review plaatsen</button>
   </div>`;
 }
-function kiesSterren(gerechtId, n){
-  gekozenSterrenPerGerecht[gerechtId] = n;
-  document.querySelectorAll(`#starPicker-${gerechtId} span`).forEach(s => {
+function kiesScore(gerechtId, key, n){
+  if(!gekozenScores[gerechtId]) gekozenScores[gerechtId] = {};
+  gekozenScores[gerechtId][key] = n;
+  document.querySelectorAll(`#sp-${gerechtId}-${key} span`).forEach(s => {
     const val = Number(s.dataset.n);
     s.textContent = val <= n ? '★' : '☆';
     s.classList.toggle('filled', val <= n);
   });
 }
 function plaatsReview(bbqId, gerechtId){
-  const sterren = gekozenSterrenPerGerecht[gerechtId] || 0;
-  if(!sterren) return;
+  const gekozen = gekozenScores[gerechtId] || {};
+  const scores = {};
+  let compleet = true;
+  REVIEW_CRITERIA.forEach(cr => { const v = gekozen[cr.key]; if(v) scores[cr.key] = v; else compleet = false; });
+  if(!compleet){ alert('Geef voor elk onderdeel (' + REVIEW_CRITERIA.map(cr=>cr.label).join(', ') + ') een score.'); return; }
   const reactie = document.getElementById('reactieInput-' + gerechtId).value.trim();
   const bbq = bbqs.find(b => b.id === bbqId);
   bbq.gangen.forEach(gang => {
     const g = gang.gerechten.find(x => x.id === gerechtId);
-    if(g) g.reviews.push({ lidId: currentUser.id, sterren, reactie });
+    if(g) g.reviews.push({ lidId: currentUser.id, scores, reactie });
   });
-  delete gekozenSterrenPerGerecht[gerechtId];
+  delete gekozenScores[gerechtId];
+  if(online) pushState();
   renderDetail();
 }
 
@@ -1493,6 +1536,7 @@ const firebaseConfig = {
 let fdb = null, online = false, _remoteApplying = false;
 let _remoteFotos = [];
 const _last = { meta:null, leden:{}, bbqs:{}, fotos:{}, voorstellen:{} };
+let _metaGeladen = false;  // database is leidend: pas schrijven nadat meta is ingelezen
 
 function verwijderBbq(id){
   if(!confirm('Deze BBQ definitief verwijderen voor de hele club?')) return;
@@ -1558,6 +1602,7 @@ function abonneer(){
       if(d.clubInstellingen) clubInstellingen = JSON.parse(JSON.stringify(d.clubInstellingen));
       if(typeof d.idCounter === 'number' && d.idCounter > idCounter) idCounter = d.idCounter;
     }
+    _metaGeladen = true;
     _remoteApplying = true; _naRemote(); _remoteApplying = false;
   }, e => console.error('meta snapshot', e));
 
@@ -1592,7 +1637,7 @@ function _syncCollectie(naam, nu, laatst){
   }
 }
 function pushState(){
-  if(!online || _remoteApplying) return;
+  if(!online || _remoteApplying || !_metaGeladen) return;  // database leidend: niet schrijven vóór inladen
   try{
     const meta = { clubInstellingen, idCounter };
     const ms = JSON.stringify(meta);
