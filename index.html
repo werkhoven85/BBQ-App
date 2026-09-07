@@ -574,6 +574,8 @@
   img{ max-width:100%; height:auto; }
   main, .view, .app, #appRoot{ max-width:100%; overflow-x:hidden; }
   .card, .panel, .voorstel-oms, .datumoptie-namen, .lid-card .email, .deelnemer, .hero-meta, .detail-meta{ overflow-wrap:anywhere; word-break:break-word; }
+  /* iOS/Safari zoomt in bij invoervelden < 16px — daarom op mobiel min. 16px (geen ongewenste inzoom) */
+  @media (max-width: 980px){ input, textarea, select{ font-size:16px !important; } }
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
