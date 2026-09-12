@@ -849,7 +849,9 @@ function alleGerechten(bbq){ return bbq.gangen.flatMap(g => g.gerechten); }
 const REVIEW_CRITERIA = [
   { key:'smaak', label:'Smaak' },
   { key:'malsheid', label:'Malsheid / gaarheid' },
-  { key:'kruiding', label:'Kruiding' }
+  { key:'kruiding', label:'Kruiding' },
+  { key:'originaliteit', label:'Originaliteit' },
+  { key:'lef', label:'Lef' }
 ];
 function reviewScore(r){
   if(r && r.scores){
