@@ -1444,25 +1444,56 @@ function renderHistorie(){
 function renderDeelnemersTab(bbq){
   const eigenDeelname = bbq.deelnemers.find(d => d.lidId === currentUser.id);
   const knop = eigenDeelname
-    ? `<button class="btn-secondary" onclick="afmelden(${bbq.id})">Afmelden voor deze BBQ</button>`
-    : `<button class="btn-primary" onclick="aanmelden(${bbq.id})">Aanmelden voor deze BBQ</button>`;
+    ? `<div style="display:flex; gap:8px; flex-wrap:wrap;"><button class="btn-secondary" onclick="openAanmeldModal(${bbq.id})">🍺 Drankje wijzigen</button><button class="btn-secondary" onclick="afmelden(${bbq.id})">Afmelden voor deze BBQ</button></div>`
+    : `<button class="btn-primary" onclick="openAanmeldModal(${bbq.id})">Aanmelden voor deze BBQ</button>`;
   const lijst = bbq.deelnemers.map(d => {
     const lid = vindLid(d.lidId);
     const dotClass = d.status === 'Aanwezig' ? 'aanwezig' : d.status === 'Aangemeld' ? 'aangemeld' : 'uitgenodigd';
-    const drankTag = lid.drank
-      ? `<span class="lid-tag" style="font-size:0.6rem; padding:2px 8px;">${lid.drank}</span>`
+    const drank = d.drank || lid.drank;
+    const drankTag = drank
+      ? `<span class="lid-tag" style="font-size:0.6rem; padding:2px 8px;">${escHtml(drank)}</span>`
       : `<span class="lid-tag empty" style="font-size:0.6rem; padding:2px 8px;">geen voorkeur</span>`;
     return `<div class="deelnemer"><div class="avatar" style="width:26px;height:26px;font-size:0.64rem;">${initials(lid.naam)}</div><span>${lid.naam}</span>${drankTag}<span class="status-dot ${dotClass}"></span><span class="st-label">${d.status}</span></div>`;
   }).join('');
   return `${knop}<div class="deelnemer-list">${lijst || '<p class="empty-note">Nog geen deelnemers.</p>'}</div>`;
 }
-function aanmelden(bbqId){
-  bbqs.find(b => b.id === bbqId).deelnemers.push({ lidId: currentUser.id, status:'Aangemeld' });
+function openAanmeldModal(bbqId){
+  const bbq = bbqs.find(b => b.id === bbqId); if(!bbq || !currentUser) return;
+  const mij = leden.find(l => l.id === currentUser.id) || { drank:null };
+  const bestaand = bbq.deelnemers.find(d => d.lidId === currentUser.id);
+  const huidige = (bestaand && bestaand.drank) || mij.drank || '';
+  const dranken = ['Bier','Alcoholvrij bier','Wijn wit','Wijn rood','Rosé'];
+  const chips = dranken.map(d => `<button type="button" class="chip-option ${huidige===d?'selected':''}" data-drank="${escAttr(d)}" onclick="_kiesAanmeldDrank(this)">${d}</button>`).join('');
+  openModal(bestaand ? 'Drankje wijzigen' : 'Aanmelden — wat drink je?', `
+    <p style="color:var(--text-dim); font-size:0.85rem; margin-bottom:12px;">Kies wat je op deze BBQ drinkt. Dit wordt meteen je standaard voorkeur voor de volgende keer.</p>
+    <div class="chip-row" id="amDrankRow">${chips}</div>
+    <input type="hidden" id="amDrank" value="${escAttr(huidige)}">
+    <button class="btn-primary btn-block" style="margin-top:16px;" onclick="bevestigAanmelden(${bbqId})">${bestaand ? 'Opslaan' : 'Aanmelden'}</button>
+  `);
+}
+function _kiesAanmeldDrank(el){
+  const al = el.classList.contains('selected');
+  el.parentElement.querySelectorAll('.chip-option').forEach(c => c.classList.remove('selected'));
+  const hidden = document.getElementById('amDrank');
+  if(al){ hidden.value = ''; } else { el.classList.add('selected'); hidden.value = el.dataset.drank; }
+}
+function bevestigAanmelden(bbqId){
+  const bbq = bbqs.find(b => b.id === bbqId); if(!bbq || !currentUser) return;
+  const drank = (document.getElementById('amDrank').value || '').trim();
+  if(!drank){ alert('Kies eerst je drankje om je aan te melden.'); return; }
+  let dn = bbq.deelnemers.find(d => d.lidId === currentUser.id);
+  if(dn){ dn.drank = drank; if(dn.status !== 'Aanwezig') dn.status = 'Aangemeld'; }
+  else { bbq.deelnemers.push({ lidId: currentUser.id, status:'Aangemeld', drank }); }
+  const mij = leden.find(l => l.id === currentUser.id);
+  if(mij) mij.drank = drank;   // per-BBQ keuze wordt ook de voorkeur op het lid
+  if(online) pushState();
+  closeModal();
   renderDetail();
 }
 function afmelden(bbqId){
   const bbq = bbqs.find(b => b.id === bbqId);
   bbq.deelnemers = bbq.deelnemers.filter(d => d.lidId !== currentUser.id);
+  if(online) pushState();
   renderDetail();
 }
 
